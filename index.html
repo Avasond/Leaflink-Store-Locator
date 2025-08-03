@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mapbox GL Store Locator</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet" />
+  <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
+  <style>
+    html,
+    body {
+      font-family: 'Poppins', sans-serif;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+
+    #locator-container {
+      display: flex;
+      height: 100%;
+      width: 100%;
+      overflow: hidden;
+    }
+
+    #sidebar {
+      background: #F6F1E6;
+      border-right: 1px solid #CCC;
+      box-shadow: 2px 0 6px rgba(0, 0, 0, 0.1);
+      display: flex;
+      flex-direction: column;
+      font-family: 'Poppins', sans-serif;
+      max-height: 100vh;
+      overflow-y: auto;
+      width: 0;
+      padding: 0;
+      box-sizing: border-box;
+      transition: width 0.5s ease, opacity 0.4s ease;
+      opacity: 0;
+    }
+
+    #sidebar.visible {
+      width: 300px;
+      padding: 1.5rem;
+      opacity: 1;
+    }
+
+    #sidebar h2 {
+      color: #483F2E;
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      margin-top: 0;
+    }
+
+    #store-list div {
+      background: #FFFFFF;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+      cursor: pointer;
+      margin-bottom: 1rem;
+      padding: 0.75rem 1rem;
+      transition: background 0.2s ease;
+    }
+
+    #store-list div:hover {
+      background: #F5F5F5;
+    }
+
+    #store-list strong {
+      color: #483F2E;
+      display: block;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    #store-list small {
+      color: #666666;
+      display: block;
+      font-size: 0.875rem;
+      margin-top: 0.25rem;
+    }
+
+    .mapboxgl-popup {
+      font-family: 'Poppins', sans-serif !important;
+    }
+
+    .mapboxgl-popup-content {
+      background: #CE6653;
+    }
+
+    #map {
+      height: 100%;
+      flex-grow: 1;
+      transition: all 0.4s ease;
+    }
+
+    #search-controls {
+      background: white;
+      border-radius: 4px;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+      padding: 0.5rem;
+      position: absolute;
+      right: 1rem;
+      top: 1rem;
+      z-index: 1000;
+    }
+
+    #search-location {
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      padding: 0.5rem;
+      width: 200px;
+    }
+
+    #search-controls button {
+      background-color: #CE6653;
+      border: none;
+      border-radius: 4px;
+      color: white;
+      cursor: pointer;
+      margin-left: 0.5rem;
+      padding: 0.5rem;
+    }
+
+    .mapboxgl-ctrl-attrib {
+      font-size: 10px !important;
+      background: transparent !important;
+      color: rgba(0, 0, 0, 0.4) !important;
+    }
+
+    .highlight-pin {
+      transform: translate(-50%, -50%);
+    }
+
+    @media (max-width: 767px) {
+      #locator-container {
+        flex-direction: column;
+      }
+
+      #sidebar {
+        width: 100%;
+        border-right: none;
+        border-top: 1px solid #CCC;
+        box-shadow: 0 -2px 6px rgba(0, 0, 0, 0.1);
+        order: 2;
+      }
+
+      #search-controls {
+        display: flex;
+        left: 1rem;
+        flex-wrap: nowrap;
+        justify-content: space-between;
+      }
+
+      #search-location {
+        flex:1;
+      }
+
+      #sidebar.visible {
+        width: 100%;
+        max-height: 50%
+      }
+    }
+  </style>
+</head>
+<body>
+  <!--
+  -->
+  <div id="locator-container">
+    <div id="sidebar">
+      <h2>Stores</h2>
+      <div id="store-list"></div>
+    </div>
+    <div id="map"></div>
+  </div>
+  <div id="search-controls">
+    <input id="search-location" type="text" placeholder="Search location..." />
+    <button onclick="searchLocation()">Go</button>
+  </div>
+  <!--
+  -->
+  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+  <script>
+    // ==============================
+    // MAP INITIALIZATION & USER LOCATION
+    // ==============================
+    mapboxgl.accessToken = "pk.eyJ1IjoiYXZhZ2F0ZXMiLCJhIjoiY205YTBqbGhjMDBmbzJtb2c1djliNXNzayJ9.UR2Vxas91qF0_4XmsofktA";
+
+    const map = new mapboxgl.Map({
+      container: "map",
+      style: "mapbox://styles/avagates/cm990hhk9004101sa7soe1h2q",
+      center: [-98.6102, 39.9792],
+      zoom: 3,
+    });
+
+    // Try to zoom to user location
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        map.flyTo({ center: [pos.coords.longitude, pos.coords.latitude], zoom: 12 });
+        new mapboxgl.Marker({ color: "#000" }).setLngLat([pos.coords.longitude, pos.coords.latitude]).setPopup(new mapboxgl.Popup()).addTo(map);
+        userLatLng = { lng: pos.coords.longitude, lat: pos.coords.latitude };
+      },
+      (err) => console.warn("Geolocation failed:", err.message),
+      { enableHighAccuracy: true },
+    );
+
+    let userLatLng = map.getCenter();
+
+    // ==============================
+    // DATASET LOADING & STORE SORTING
+    // ==============================
+    map.on("load", () => {
+      // Helper function to update the sidebar with visible features
+      function updateSidebarWithVisibleStores(sortedAllFeatures) {
+        const bounds = map.getBounds();
+        const storeList = document.getElementById("store-list");
+        storeList.innerHTML = ""; // clear list
+
+        const visibleSorted = sortedAllFeatures.filter(feature => {
+          const [lng, lat] = feature.geometry.coordinates;
+          return bounds.contains([lng, lat]);
+        });
+
+        visibleSorted.forEach((feature) => {
+          const { name, address } = feature.properties;
+          const [lng, lat] = feature.geometry.coordinates;
+
+          const div = document.createElement("div");
+          div.innerHTML = `<strong>${name}</strong><br><small><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}" target="_blank">${address}</a></small>`;
+          div.onclick = () => map.flyTo({ center: [lng, lat], zoom: 14 });
+          
+          div.addEventListener("mouseenter", () => {
+            const matchingFeatures = map.querySourceFeatures("stores", {
+              sourceLayer: undefined,
+              filter: ["all", ["==", "name", name], ["==", "address", address]],
+            });
+
+            if (matchingFeatures.length > 0) {
+              const [lng, lat] = matchingFeatures[0].geometry.coordinates;
+              const el = document.createElement("div");
+              el.className = "highlight-pin";
+              el.style.width = "40px";
+              el.style.height = "10px";
+              el.style.borderRadius = "50%";
+              el.style.boxShadow = "0 0 15px 5px rgba(206, 102, 83, 0.75)";
+              el.style.pointerEvents = "none";
+
+              const glowMarker = new mapboxgl.Marker({ element: el })
+                .setLngLat([lng, lat])
+                .addTo(map);
+
+              div._glowMarker = glowMarker;
+            }
+          });
+
+          div.addEventListener("mouseleave", () => {
+            if (div._glowMarker) {
+              div._glowMarker.remove();
+              delete div._glowMarker;
+            }
+          });
+
+          storeList.appendChild(div);
+        });
+      }
+
+      map.loadImage("img/KBpin512.png", (err, image) => {
+        if (err) throw err;
+        map.addImage("pin-icon", image);
+
+        // Load dataset from Mapbox Datasets API
+        fetch("https://api.mapbox.com/datasets/v1/avagates/cm9a93wlr0emz1mprurdhfgoq/features?access_token=" + mapboxgl.accessToken)
+          .then((res) => res.json())
+          .then((data) => {
+            const sortedFeatures = data.features.slice().sort((a, b) => {
+              const [lngA, latA] = a.geometry.coordinates;
+              const [lngB, latB] = b.geometry.coordinates;
+
+              const distA = Math.hypot(userLatLng.lat - latA, userLatLng.lng - lngA);
+              const distB = Math.hypot(userLatLng.lat - latB, userLatLng.lng - lngB);
+
+              return distA - distB;
+            });
+
+            // ==============================
+            // SIDEBAR POPULATION
+            // ==============================
+            map.addSource("stores", {
+              type: "geojson",
+              data: {
+                type: "FeatureCollection",
+                features: sortedFeatures,
+              },
+              cluster: true,
+              clusterMaxZoom: 14,
+              clusterRadius: 20,
+            });
+            const storeList = document.getElementById("store-list");
+
+            sortedFeatures.forEach((feature) => {
+              const { name, address } = feature.properties;
+              const [lng, lat] = feature.geometry.coordinates;
+
+              // Add list entry
+              const div = document.createElement("div");
+              div.innerHTML = `<strong>${name}</strong><br><small><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}" target="_blank">${address}</a></small>`;
+              div.onclick = () => map.flyTo({ center: [lng, lat], zoom: 14 });
+              
+              div.addEventListener("mouseenter", () => {
+                const matchingFeatures = map.querySourceFeatures("stores", {
+                  sourceLayer: undefined,
+                  filter: ["all", ["==", "name", name], ["==", "address", address]],
+                });
+
+                if (matchingFeatures.length > 0) {
+                  const [lng, lat] = matchingFeatures[0].geometry.coordinates;
+                  const el = document.createElement("div");
+                  el.className = "highlight-pin";
+                  el.style.width = "40px";
+                  el.style.height = "40px";
+                  el.style.borderRadius = "50%";
+                  el.style.boxShadow = "0 0 15px 5px rgba(206, 102, 83, 0.75)";
+                  el.style.pointerEvents = "none";
+
+                  const glowMarker = new mapboxgl.Marker({ element: el })
+                    .setLngLat([lng, lat])
+                    .addTo(map);
+
+                  div._glowMarker = glowMarker;
+                }
+              });
+
+              div.addEventListener("mouseleave", () => {
+                if (div._glowMarker) {
+                  div._glowMarker.remove();
+                  delete div._glowMarker;
+                }
+              });
+
+              storeList.appendChild(div);
+            });
+
+            document.getElementById("sidebar").classList.add("visible");
+            updateSidebarWithVisibleStores(sortedFeatures);
+            map.on("moveend", () => updateSidebarWithVisibleStores(sortedFeatures));
+
+            // ==============================
+            // MAP LAYERS & CLUSTER STYLING
+            // ==============================
+            // Cluster circles
+            map.addLayer({
+              id: "clusters",
+              type: "circle",
+              source: "stores",
+              filter: ["has", "point_count"],
+              paint: {
+                "circle-color": "#CE6653",
+                "circle-radius": ["step", ["get", "point_count"], 15, 10, 20, 30, 25],
+              },
+            });
+
+            // Cluster count labels
+            map.addLayer({
+              id: "cluster-count",
+              type: "symbol",
+              source: "stores",
+              filter: ["has", "point_count"],
+              layout: {
+                "text-field": "{point_count_abbreviated}",
+                "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+                "text-size": 12,
+              },
+            });
+
+            map.addLayer({
+              id: "unclustered-point",
+              type: "symbol",
+              source: "stores",
+              filter: ["!", ["has", "point_count"]],
+              layout: {
+                "icon-image": "pin-icon",
+                "icon-size": [
+                  "interpolate",
+                  ["linear"],
+                  ["zoom"],
+                  4,
+                  0.03, // ~15px at low zoom
+                  10,
+                  0.08, // ~40px at mid zoom
+                  14,
+                  0.12, // ~60px at close zoom
+                ],
+                "icon-anchor": "bottom",
+                "icon-allow-overlap": true,
+              },
+            });
+
+            // ==============================
+            // POPUPS & INTERACTIONS
+            // ==============================
+            map.on("click", "unclustered-point", (e) => {
+              const { name, address } = e.features[0].properties;
+              new mapboxgl.Popup()
+                .setLngLat(e.lngLat)
+                .setHTML(`<strong>${name}</strong><br><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}" target="_blank">${address}</a>`)
+                .addTo(map);
+            });
+
+            map.on("click", "clusters", (e) => {
+              const features = map.queryRenderedFeatures(e.point, {
+                layers: ["clusters"],
+              });
+              const clusterId = features[0].properties.cluster_id;
+              map.getSource("stores").getClusterExpansionZoom(clusterId, (err, zoom) => {
+                if (err) return;
+                map.easeTo({
+                  center: features[0].geometry.coordinates,
+                  zoom,
+                });
+              });
+            });
+
+            map.on("mouseenter", "unclustered-point", () => {
+              map.getCanvas().style.cursor = "pointer";
+            });
+
+            map.on("mouseleave", "unclustered-point", () => {
+              map.getCanvas().style.cursor = "";
+            });
+          })
+          .catch((err) => console.error("Failed to load dataset:", err));
+      });
+    });
+
+    // ==============================
+    // SEARCH FUNCTIONALITY
+    // ==============================
+    function searchLocation() {
+      const query = document.getElementById("search-location").value;
+      if (!query) return;
+
+      fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${mapboxgl.accessToken}`)
+        .then((res) => res.json())
+        .then((data) => {
+          const feature = data.features[0];
+          if (feature) {
+            map.flyTo({
+              center: feature.center,
+              zoom: 12,
+            });
+          } else {
+            alert("Location not found.");
+          }
+        })
+        .catch((err) => console.error("Geocoding error:", err));
+    }
+  </script>
+</body>
+</html>

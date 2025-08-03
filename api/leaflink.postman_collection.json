@@ -1,0 +1,392 @@
+{
+	"info": {
+		"_postman_id": "e36efc30-1618-43af-bda0-9b2cf5d6f2f6",
+		"name": "leaflink",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "17177422"
+	},
+	"item": [
+		{
+			"name": "List Orders",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"const orders = pm.response.json().results || [];",
+							"const customerIds = [];",
+							"const createdOnMap = {};",
+							"const seenIds = new Set();",
+							"const requiredBrandId = parseInt(pm.environment.get(\"BRANDID\"), 10);",
+							"",
+							"orders.forEach(order => {",
+							"  const total = Number(order.total?.amount);",
+							"  const id = order.customer?.id;",
+							"  const created = order.created_on;",
+							"  const brandIds = order.brand_ids || [];",
+							"",
+							"  if (",
+							"    !isNaN(total) &&",
+							"    total > 20 &&",
+							"    id &&",
+							"    !seenIds.has(id) &&",
+							"    brandIds.includes(requiredBrandId)",
+							"  ) {",
+							"    seenIds.add(id);",
+							"    customerIds.push(id);",
+							"    createdOnMap[id] = created;",
+							"  }",
+							"});",
+							"",
+							"pm.environment.set(\"customer_ids\", JSON.stringify(customerIds));",
+							"pm.environment.set(\"created_on_map\", JSON.stringify(createdOnMap));",
+							"pm.environment.set(\"current_index\", \"0\");",
+							"",
+							"pm.execution.setNextRequest(customerIds.length > 0 ? \"Retrieve a Customer\" : null);"
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Accept",
+						"value": "application/json"
+					}
+				],
+				"url": {
+					"raw": "{{baseUrl}}/orders-received/?fields_include=created_on,customer,total,brand_ids&limit=500&offset=0",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"orders-received",
+						""
+					],
+					"query": [
+						{
+							"key": "fields_include",
+							"value": "created_on,customer,total,brand_ids",
+							"description": "Include only specific fields in the response, separated by commas."
+						},
+						{
+							"key": "limit",
+							"value": "500",
+							"description": "Number of results to return per page."
+						},
+						{
+							"key": "offset",
+							"value": "0",
+							"description": "The initial index from which to return the results."
+						}
+					]
+				},
+				"description": "List received orders for all active companies where the user has the Manage Orders Received permission. <br /> <br />Per company via <b>/companies/{company_id}/orders-received/</b>"
+			},
+			"response": []
+		},
+		{
+			"name": "Retrieve a Customer",
+			"event": [
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							"const ids = JSON.parse(pm.environment.get(\"customer_ids\") || \"[]\");",
+							"const index = parseInt(pm.environment.get(\"current_index\"), 10) || 0;",
+							"",
+							"if (index < ids.length) {",
+							"  pm.environment.set(\"customer_id\", ids[index]);",
+							"} else {",
+							"  pm.execution.setNextRequest(null);",
+							"}"
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				},
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"const c = pm.response.json();",
+							"pm.environment.set(\"customer_name\", c.name || \"\");",
+							"pm.environment.set(\"customer_address\", c.address || \"\");",
+							"pm.environment.set(\"customer_city\", c.city || \"\");",
+							"pm.environment.set(\"customer_state\", c.state || \"\");",
+							"pm.environment.set(\"customer_zip\", c.zipcode || \"\");",
+							"",
+							"pm.execution.setNextRequest(\"Geocode Address\");"
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Accept",
+						"value": "application/json"
+					}
+				],
+				"url": {
+					"raw": "{{baseUrl}}/customers/:id/?fields_include=state, name, address, zipcode, city, lat, long",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"customers",
+						":id",
+						""
+					],
+					"query": [
+						{
+							"key": "fields_include",
+							"value": "state, name, address, zipcode, city, lat, long",
+							"description": "Include only specific fields in the response, separated by commas."
+						}
+					],
+					"variable": [
+						{
+							"key": "id",
+							"value": "{{customer_id}}",
+							"description": "(Required) A unique integer value identifying this company customer."
+						}
+					]
+				},
+				"description": "Retrieve a customer by ID."
+			},
+			"response": []
+		},
+		{
+			"name": "Geocode Address",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"const geo = pm.response.json();",
+							"const coords = geo.features?.[0]?.geometry?.coordinates;",
+							"",
+							"if (coords) {",
+							"  pm.environment.set('lng', coords[0]);",
+							"  pm.environment.set('lat', coords[1]);",
+							"} else {",
+							"  pm.environment.set('lng', '');",
+							"  pm.environment.set('lat', '');",
+							"}",
+							"pm.execution.setNextRequest(\"Push Customer to Neon\");"
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "https://api.mapbox.com/geocoding/v5/mapbox.places/{{customer_address}},{{customer_city}},{{customer_state}},{{customer_zip}}.json?access_token={{MAPBOX_TOKEN}}&limit=1",
+					"protocol": "https",
+					"host": [
+						"api",
+						"mapbox",
+						"com"
+					],
+					"path": [
+						"geocoding",
+						"v5",
+						"mapbox.places",
+						"{{customer_address}},{{customer_city}},{{customer_state}},{{customer_zip}}.json"
+					],
+					"query": [
+						{
+							"key": "access_token",
+							"value": "{{MAPBOX_TOKEN}}"
+						},
+						{
+							"key": "limit",
+							"value": "1"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Push Customer to Neon",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.execution.setNextRequest(\"Push to Mapbox Dataset\");"
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							"const customerId = pm.environment.get(\"customer_id\");",
+							"const createdMap = pm.environment.get(\"created_on_map\");",
+							"",
+							"if (customerId && createdMap) {",
+							"  try {",
+							"    const parsedMap = JSON.parse(createdMap);",
+							"    const timestamp = parsedMap[customerId];",
+							"    if (timestamp) {",
+							"      pm.environment.set(\"created_on\", timestamp);",
+							"    }",
+							"  } catch (e) {",
+							"    console.warn(\"Failed to parse created_on_map:\", e);",
+							"  }",
+							"}"
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"request": {
+				"method": "PUT",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"customer_id\": \"{{customer_id}}\",\n  \"name\": \"{{customer_name}}\",\n  \"address\": \"{{customer_address}}\",\n  \"city\": \"{{customer_city}}\",\n  \"state\": \"{{customer_state}}\",\n  \"zipcode\": \"{{customer_zip}}\",\n  \"lat\": \"{{lat}}\",\n  \"lng\": \"{{lng}}\",\n  \"order_date\": \"{{created_on}}\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://kb-storelocator.vercel.app/api/post-store-data",
+					"protocol": "https",
+					"host": [
+						"kb-storelocator",
+						"vercel",
+						"app"
+					],
+					"path": [
+						"api",
+						"post-store-data"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Push to Mapbox Dataset",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"const ids = JSON.parse(pm.environment.get(\"customer_ids\") || \"[]\");",
+							"let index = parseInt(pm.environment.get(\"current_index\"), 10) || 0;",
+							"",
+							"index++;",
+							"pm.environment.set(\"current_index\", index);",
+							"",
+							"if (index < ids.length) {",
+							"  pm.execution.setNextRequest(\"Retrieve a Customer\");",
+							"} else {",
+							"  pm.execution.setNextRequest(null);",
+							"}"
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "PUT",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"type\": \"Feature\",\n  \"id\": \"{{customer_id}}\",\n  \"geometry\": {\n    \"type\": \"Point\",\n    \"coordinates\": [{{lng}}, {{lat}}]\n  },\n  \"properties\": {\n    \"name\": \"{{customer_name}}\",\n    \"address\": \"{{customer_address}}\",\n    \"city\": \"{{customer_city}}\",\n    \"state\": \"{{customer_state}}\",\n    \"zipcode\": \"{{customer_zip}}\"\n  }\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://api.mapbox.com/datasets/v1/{{mapbox_username}}/{{mapbox_dataset_id}}/features/{{customer_id}}?access_token={{MAPBOX_DATASET_TOKEN}}",
+					"protocol": "https",
+					"host": [
+						"api",
+						"mapbox",
+						"com"
+					],
+					"path": [
+						"datasets",
+						"v1",
+						"{{mapbox_username}}",
+						"{{mapbox_dataset_id}}",
+						"features",
+						"{{customer_id}}"
+					],
+					"query": [
+						{
+							"key": "access_token",
+							"value": "{{MAPBOX_DATASET_TOKEN}}"
+						}
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"auth": {
+		"type": "apikey",
+		"apikey": [
+			{
+				"key": "key",
+				"value": "Authorization",
+				"type": "string"
+			},
+			{
+				"key": "value",
+				"value": "App {{APIKEY}}",
+				"type": "string"
+			}
+		]
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"exec": [
+					""
+				]
+			}
+		}
+	]
+}

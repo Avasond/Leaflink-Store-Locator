@@ -1,0 +1,126 @@
+name: Collect Latest Stores
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 8 1 * *" # Runs at 08:00 UTC on the 1st of every month
+
+jobs:
+  ok:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install Newman
+        run: npm install -g newman
+
+      - name: Inject API Keys for OK
+        run: |
+          sed "s/{{APIKEY}}/${{ secrets.APIKEY_OK }}/g" api/leaflink.postman_environment.json | \
+          sed "s/{{MAPBOXTOKEN}}/${{ secrets.MAPBOXTOKEN }}/g" | \
+          sed "s/{{MAPBOXDATASETTOKEN}}/${{ secrets.MAPBOXDATASETTOKEN }}/g" | \
+          sed "s/{{BRANDID}}/${{ secrets.BRANDID_OK }}/g" > api/env.runtime.json
+
+      - name: Run Newman for OK
+        run: |
+          newman run api/leaflink.postman_collection.json \
+            --environment api/env.runtime.json \
+            --insecure \
+            --verbose
+
+  gmo:
+    runs-on: ubuntu-latest
+    needs: ok
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install Newman
+        run: npm install -g newman
+
+      - name: Inject API Keys for GMO
+        run: |
+          sed "s/{{APIKEY}}/${{ secrets.APIKEY_GMO }}/g" api/leaflink.postman_environment.json | \
+          sed "s/{{MAPBOXTOKEN}}/${{ secrets.MAPBOXTOKEN }}/g" | \
+          sed "s/{{MAPBOXDATASETTOKEN}}/${{ secrets.MAPBOXDATASETTOKEN }}/g" | \
+          sed "s/{{BRANDID}}/${{ secrets.BRANDID_GMO }}/g" > api/env.runtime.json
+
+      - name: Run Newman for GMO
+        run: |
+          newman run api/leaflink.postman_collection.json \
+            --environment api/env.runtime.json \
+            --insecure \
+            --verbose
+
+  vmo:
+    runs-on: ubuntu-latest
+    needs: gmo
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install Newman
+        run: npm install -g newman
+
+      - name: Inject API Keys for VMO
+        run: |
+          sed "s/{{APIKEY}}/${{ secrets.APIKEY_VMO }}/g" api/leaflink.postman_environment.json | \
+          sed "s/{{MAPBOXTOKEN}}/${{ secrets.MAPBOXTOKEN }}/g" | \
+          sed "s/{{MAPBOXDATASETTOKEN}}/${{ secrets.MAPBOXDATASETTOKEN }}/g" | \
+          sed "s/{{BRANDID}}/${{ secrets.BRANDID_VMO }}/g" > api/env.runtime.json
+
+      - name: Run Newman for VMO
+        run: |
+          newman run api/leaflink.postman_collection.json \
+            --environment api/env.runtime.json \
+            --insecure \
+            --verbose
+
+  az:
+    runs-on: ubuntu-latest
+    needs: vmo
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install Newman
+        run: npm install -g newman
+
+      - name: Inject API Keys for AZ
+        run: |
+          sed "s/{{APIKEY}}/${{ secrets.APIKEY_AZ }}/g" api/leaflink.postman_environment.json | \
+          sed "s/{{MAPBOXTOKEN}}/${{ secrets.MAPBOXTOKEN }}/g" | \
+          sed "s/{{MAPBOXDATASETTOKEN}}/${{ secrets.MAPBOXDATASETTOKEN }}/g" | \
+          sed "s/{{BRANDID}}/${{ secrets.BRANDID_AZ }}/g" > api/env.runtime.json
+
+      - name: Run Newman for AZ
+        run: |
+          newman run api/leaflink.postman_collection.json \
+            --environment api/env.runtime.json \
+            --insecure \
+            --verbose
+
+  cleanup:
+    runs-on: ubuntu-latest
+    needs: az
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install Newman
+        run: npm install -g newman
+
+      - name: Inject Env Vars for Cleanup
+        run: |
+          sed "s/{{APIKEY}}/${{ secrets.APIKEY_OK }}/g" api/leaflink.postman_environment.json | \
+          sed "s/{{MAPBOXTOKEN}}/${{ secrets.MAPBOXTOKEN }}/g" | \
+          sed "s/{{MAPBOXDATASETTOKEN}}/${{ secrets.MAPBOXDATASETTOKEN }}/g" | \
+          sed "s/{{BRANDID}}/0/g" > api/env.runtime.json
+
+      - name: Run Cleanup Collection
+        run: |
+          newman run api/leaflink_cleanup.postman_collection.json \
+            --environment api/env.runtime.json \
+            --insecure \
+            --verbose

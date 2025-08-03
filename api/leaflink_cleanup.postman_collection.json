@@ -1,0 +1,135 @@
+{
+	"info": {
+		"_postman_id": "03572642-4809-4f2a-bc1d-43fc7c08915e",
+		"name": "leaflink_cleanup",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "17177422"
+	},
+	"item": [
+		{
+			"name": "Get Old Stores",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"const response = pm.response.json();",
+							"const ids = response.delete_ids || [];",
+							"",
+							"if (ids.length) {",
+							"  pm.environment.set(\"delete_ids\", JSON.stringify(ids));",
+							"  pm.environment.set(\"delete_index\", \"0\");",
+							"  pm.environment.set(\"delete_customer_id\", ids[0]);",
+							"  pm.execution.setNextRequest(\"Clean Up Old Map Data\");",
+							"} else {",
+							"  console.log(\"No expired records found.\");",
+							"  pm.execution.setNextRequest(null);",
+							"}"
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "https://kb-storelocator.vercel.app/api/get-old-stores?months=12",
+					"protocol": "https",
+					"host": [
+						"kb-storelocator",
+						"vercel",
+						"app"
+					],
+					"path": [
+						"api",
+						"get-old-stores"
+					],
+					"query": [
+						{
+							"key": "months",
+							"value": "12"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Clean Up Old Map Data",
+			"event": [
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				},
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Store deletion handled gracefully\", function () {",
+							"  pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]);",
+							"});",
+							"",
+							"const ids = JSON.parse(pm.environment.get(\"delete_ids\") || \"[]\");",
+							"let index = parseInt(pm.environment.get(\"delete_index\") || \"0\", 10);",
+							"",
+							"if (pm.response.code === 404) {",
+							"  console.warn(`⚠️ Feature not found for ID ${pm.environment.get(\"delete_customer_id\")} — skipping.`);",
+							"}",
+							"",
+							"index++;",
+							"if (index < ids.length) {",
+							"  pm.environment.set(\"delete_index\", index);",
+							"  pm.environment.set(\"delete_customer_id\", ids[index]);",
+							"  pm.execution.setNextRequest(\"Clean Up Old Map Data\");",
+							"} else {",
+							"  console.log(\"✅ Finished deleting expired records.\");",
+							"  pm.environment.unset(\"delete_ids\");",
+							"  pm.environment.unset(\"delete_index\");",
+							"  pm.environment.unset(\"delete_customer_id\");",
+							"  pm.execution.setNextRequest(null);",
+							"}"
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"request": {
+				"method": "DELETE",
+				"header": [],
+				"url": {
+					"raw": "https://api.mapbox.com/datasets/v1/{{mapbox_username}}/{{mapbox_dataset_id}}/features/{{delete_customer_id}}?access_token={{MAPBOX_DATASET_TOKEN}}",
+					"protocol": "https",
+					"host": [
+						"api",
+						"mapbox",
+						"com"
+					],
+					"path": [
+						"datasets",
+						"v1",
+						"{{mapbox_username}}",
+						"{{mapbox_dataset_id}}",
+						"features",
+						"{{delete_customer_id}}"
+					],
+					"query": [
+						{
+							"key": "access_token",
+							"value": "{{MAPBOX_DATASET_TOKEN}}"
+						}
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}
